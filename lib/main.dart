@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:camera/camera.dart';
@@ -9,33 +10,32 @@ import 'package:geolocator/geolocator.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:intl/intl.dart'; // For date formatting
+import 'package:intl/intl.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final cameras = await availableCameras();
-  final firstCamera = cameras.first;
-  runApp(PlanetPhotoTracker(camera: firstCamera));
+  runApp(PlanetPhotoTracker(cameras: cameras));
 }
 
 class PlanetPhotoTracker extends StatelessWidget {
-  final CameraDescription camera;
-  const PlanetPhotoTracker({required this.camera, Key? key}) : super(key: key);
+  final List<CameraDescription> cameras;
+  const PlanetPhotoTracker({required this.cameras, Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Planet Photo Tracker',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: HomeScreen(camera: camera),
+      home: HomeScreen(cameras: cameras),
     );
   }
 }
 
 /// HomeScreen with bottom navigation to switch between Capture and Gallery screens.
 class HomeScreen extends StatefulWidget {
-  final CameraDescription camera;
-  const HomeScreen({required this.camera, Key? key}) : super(key: key);
+  final List<CameraDescription> cameras;
+  const HomeScreen({required this.cameras, Key? key}) : super(key: key);
 
   @override
   _HomeScreenState createState() => _HomeScreenState();
@@ -48,7 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _pages = [CameraScreen(camera: widget.camera), GalleryScreen()];
+    _pages = [CameraScreen(cameras: widget.cameras), GalleryScreen()];
   }
 
   void _onItemTapped(int index) {
@@ -80,9 +80,10 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 /// CameraScreen captures an image along with GPS & timestamp data.
+/// Now supports camera switching and zoom control.
 class CameraScreen extends StatefulWidget {
-  final CameraDescription camera;
-  const CameraScreen({required this.camera, Key? key}) : super(key: key);
+  final List<CameraDescription> cameras;
+  const CameraScreen({required this.cameras, Key? key}) : super(key: key);
 
   @override
   _CameraScreenState createState() => _CameraScreenState();
@@ -91,6 +92,12 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   late CameraController _controller;
   late Future<void> _initializeControllerFuture;
+  int _currentCameraIndex = 0;
+
+  // Zoom-related state variables.
+  double _minZoom = 1.0;
+  double _maxZoom = 1.0;
+  double _currentZoom = 1.0;
 
   Position? _currentPosition;
   late DateTime _captureTime;
@@ -106,26 +113,36 @@ class _CameraScreenState extends State<CameraScreen> {
 
   // Track if location permission is granted.
   bool _locationPermissionGranted = false;
-  // Subscription for continuous position updates.
   StreamSubscription<Position>? _positionStreamSubscription;
 
   @override
   void initState() {
     super.initState();
+    _initializeCamera();
+    _checkLocationPermission();
+    _loadSettings();
+  }
 
-    // Initialize the camera with audio disabled.
+  Future<void> _initializeCamera() async {
     _controller = CameraController(
-      widget.camera,
+      widget.cameras[_currentCameraIndex],
       ResolutionPreset.high,
       enableAudio: false,
     );
-    _initializeControllerFuture = _controller.initialize();
+    _initializeControllerFuture = _controller.initialize().then((_) async {
+      // Fetch the min and max zoom levels once the camera is initialized.
+      _minZoom = await _controller.getMinZoomLevel();
+      _maxZoom = await _controller.getMaxZoomLevel();
+      _currentZoom = _minZoom;
+      setState(() {});
+    });
+  }
 
-    // Explicitly check/request location permission at runtime.
-    _checkLocationPermission();
-
-    // Load any previously saved overlay settings.
-    _loadSettings();
+  void _switchCamera() async {
+    if (widget.cameras.length < 2) return;
+    _currentCameraIndex = (_currentCameraIndex + 1) % widget.cameras.length;
+    await _controller.dispose();
+    _initializeCamera();
   }
 
   Future<void> _fetchCurrentLocation() async {
@@ -151,26 +168,21 @@ class _CameraScreenState extends State<CameraScreen> {
       print("Location services are disabled. Please enable them in settings.");
       return;
     }
-
     LocationPermission permission = await Geolocator.checkPermission();
     print("Initial location permission status: $permission");
-
     if (permission == LocationPermission.denied) {
       print("Requesting location permission...");
       permission = await Geolocator.requestPermission();
     }
-
     if (permission == LocationPermission.deniedForever) {
       print("Location permission permanently denied. Opening app settings.");
       await Geolocator.openAppSettings();
       return;
     }
-
     if (permission == LocationPermission.denied) {
       print("User denied location permission.");
       return;
     }
-
     print("Location permission granted: $permission");
     setState(() {
       _locationPermissionGranted = true;
@@ -181,7 +193,7 @@ class _CameraScreenState extends State<CameraScreen> {
   void _showLocationPermissionDialog() {
     showDialog(
       context: context,
-      barrierDismissible: false, // Force user to respond.
+      barrierDismissible: false,
       builder: (context) {
         return AlertDialog(
           title: const Text("Location Permission Required"),
@@ -246,18 +258,14 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _captureAndProcessImage() async {
     try {
       await _initializeControllerFuture;
-
-      // If we don't have a current position yet, try to get one immediately.
       if (_currentPosition == null && _locationPermissionGranted) {
         _currentPosition = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
         );
         print("Fetched position at capture: $_currentPosition");
       }
-
       final image = await _controller.takePicture();
       _captureTime = DateTime.now();
-
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -306,15 +314,42 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Even if location permission isn't granted, we show the camera preview.
-    // The location dialog should prompt the user to allow access.
     return Scaffold(
-      appBar: AppBar(title: const Text('Capture Image')),
+      appBar: AppBar(
+        title: const Text('Capture Image'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.switch_camera),
+            tooltip: 'Switch Camera',
+            onPressed: _switchCamera,
+          ),
+        ],
+      ),
       body: FutureBuilder<void>(
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done) {
-            return CameraPreview(_controller);
+            return Stack(
+              children: [
+                CameraPreview(_controller),
+                Positioned(
+                  bottom: 80,
+                  left: 20,
+                  right: 20,
+                  child: Slider(
+                    min: _minZoom,
+                    max: _maxZoom,
+                    value: _currentZoom.clamp(_minZoom, _maxZoom),
+                    onChanged: (value) async {
+                      await _controller.setZoomLevel(value);
+                      setState(() {
+                        _currentZoom = value;
+                      });
+                    },
+                  ),
+                ),
+              ],
+            );
           } else {
             return const Center(child: CircularProgressIndicator());
           }
@@ -330,6 +365,7 @@ class _CameraScreenState extends State<CameraScreen> {
 }
 
 /// PreviewScreen lets the user adjust overlays and save the final image.
+/// Uses DraggableTextOverlay for improved touch tracking and bounding.
 class PreviewScreen extends StatefulWidget {
   final String imagePath;
   final String gpsData;
@@ -388,7 +424,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
     showDate = widget.showDate;
     showDescription = widget.showDescription;
     descriptionText = widget.descriptionText;
-
     _descriptionController = TextEditingController(text: descriptionText);
     _descriptionController.addListener(() {
       setState(() {
@@ -403,7 +438,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
     final size = MediaQuery.of(context).size;
     final appBarHeight =
         AppBar().preferredSize.height + MediaQuery.of(context).padding.top;
-
     setState(() {
       maxWidth = size.width;
       maxHeight = size.height - appBarHeight;
@@ -439,48 +473,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
     return painter.size.width;
   }
 
-  Widget _buildDraggableOverlay(
-    String text,
-    Offset offset,
-    Function(Offset) onUpdate,
-  ) {
-    final textStyle = const TextStyle(color: Colors.white, fontSize: 15);
-    final overlayWidth = _calculateTextWidth(text) + 16;
-    const overlayHeight = 30;
-
-    final screenSize = MediaQuery.of(context).size;
-    final appBarHeight =
-        AppBar().preferredSize.height + MediaQuery.of(context).padding.top;
-
-    final constrainedMaxWidth = screenSize.width - overlayWidth;
-    final constrainedMaxHeight =
-        screenSize.height - overlayHeight - appBarHeight;
-
-    return Positioned(
-      left: offset.dx,
-      top: offset.dy,
-      child: GestureDetector(
-        onPanUpdate: (details) {
-          setState(() {
-            final newOffset = Offset(
-              (offset.dx + details.delta.dx).clamp(0.0, constrainedMaxWidth),
-              (offset.dy + details.delta.dy).clamp(0.0, constrainedMaxHeight),
-            );
-            onUpdate(newOffset);
-          });
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.black54,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(text, style: textStyle),
-        ),
-      ),
-    );
-  }
-
   Future<void> _saveOverlayedImage() async {
     try {
       RenderRepaintBoundary boundary =
@@ -491,7 +483,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
         format: ui.ImageByteFormat.png,
       );
       final pngBytes = byteData!.buffer.asUint8List();
-
       final directory = await getApplicationDocumentsDirectory();
       final imageDir = Directory('${directory.path}/planet_photo_tracker');
       if (!(await imageDir.exists())) {
@@ -502,7 +493,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
             '${imageDir.path}/${DateTime.now().millisecondsSinceEpoch}.png',
           ).create();
       await file.writeAsBytes(pngBytes);
-
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Image saved')));
@@ -517,7 +507,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
       widget.captureTime,
       _is24HourFormat,
     );
-
+    final screenSize = MediaQuery.of(context).size;
+    final appBarHeight =
+        AppBar().preferredSize.height + MediaQuery.of(context).padding.top;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Preview & Edit'),
@@ -539,22 +531,47 @@ class _PreviewScreenState extends State<PreviewScreen> {
                 children: [
                   Image.file(File(widget.imagePath), fit: BoxFit.cover),
                   if (showGPS)
-                    _buildDraggableOverlay(
-                      'GPS: ${widget.gpsData}',
-                      gpsOffset,
-                      (newOffset) => gpsOffset = newOffset,
+                    DraggableTextOverlay(
+                      text: 'GPS: ${widget.gpsData}',
+                      initialOffset: gpsOffset,
+                      maxX:
+                          screenSize.width -
+                          (_calculateTextWidth('GPS: ${widget.gpsData}') + 16),
+                      maxY: screenSize.height - 30 - appBarHeight,
+                      onUpdate: (newOffset) {
+                        setState(() {
+                          gpsOffset = newOffset;
+                        });
+                      },
                     ),
                   if (showDate)
-                    _buildDraggableOverlay(
-                      'Date: $formattedDateTime',
-                      dateOffset,
-                      (newOffset) => dateOffset = newOffset,
+                    DraggableTextOverlay(
+                      text: 'Date: $formattedDateTime',
+                      initialOffset: dateOffset,
+                      maxX:
+                          screenSize.width -
+                          (_calculateTextWidth('Date: $formattedDateTime') +
+                              16),
+                      maxY: screenSize.height - 30 - appBarHeight,
+                      onUpdate: (newOffset) {
+                        setState(() {
+                          dateOffset = newOffset;
+                        });
+                      },
                     ),
                   if (showDescription)
-                    _buildDraggableOverlay(
-                      descriptionText,
-                      descOffset,
-                      (newOffset) => descOffset = newOffset,
+                    DraggableTextOverlay(
+                      text: descriptionText,
+                      initialOffset: descOffset,
+                      maxX:
+                          screenSize.width -
+                          (_calculateTextWidth(descriptionText) + 16),
+                      maxY: screenSize.height - 30 - appBarHeight,
+                      onUpdate: (newOffset) {
+                        setState(() {
+                          descOffset = newOffset;
+                        });
+                      },
                     ),
                 ],
               ),
@@ -639,6 +656,75 @@ class _PreviewScreenState extends State<PreviewScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// DraggableTextOverlay is a dedicated widget for text overlays
+/// that improves touch tracking and keeps the text within bounds.
+class DraggableTextOverlay extends StatefulWidget {
+  final String text;
+  final Offset initialOffset;
+  final double maxX;
+  final double maxY;
+  final ValueChanged<Offset> onUpdate;
+
+  const DraggableTextOverlay({
+    required this.text,
+    required this.initialOffset,
+    required this.maxX,
+    required this.maxY,
+    required this.onUpdate,
+    Key? key,
+  }) : super(key: key);
+
+  @override
+  _DraggableTextOverlayState createState() => _DraggableTextOverlayState();
+}
+
+class _DraggableTextOverlayState extends State<DraggableTextOverlay> {
+  late Offset offset;
+  Offset? dragStart;
+  Offset? startOffset;
+
+  @override
+  void initState() {
+    super.initState();
+    offset = widget.initialOffset;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textStyle = const TextStyle(color: Colors.white, fontSize: 15);
+    return Positioned(
+      left: offset.dx,
+      top: offset.dy,
+      child: GestureDetector(
+        onPanStart: (details) {
+          dragStart = details.globalPosition;
+          startOffset = offset;
+        },
+        onPanUpdate: (details) {
+          final dx = details.globalPosition.dx - dragStart!.dx;
+          final dy = details.globalPosition.dy - dragStart!.dy;
+          final newOffset = Offset(
+            (startOffset!.dx + dx).clamp(0.0, widget.maxX),
+            (startOffset!.dy + dy).clamp(0.0, widget.maxY),
+          );
+          setState(() {
+            offset = newOffset;
+          });
+          widget.onUpdate(newOffset);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(widget.text, style: textStyle),
+        ),
       ),
     );
   }

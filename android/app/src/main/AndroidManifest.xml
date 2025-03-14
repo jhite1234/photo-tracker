@@ -6,7 +6,7 @@
 
 
     <application
-        android:label="planet_photo_tracker"
+        android:label="Planet Photo Tracker"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

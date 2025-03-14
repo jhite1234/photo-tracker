@@ -14,6 +14,8 @@ dependencies:
   path_provider: ^2.0.10
   shared_preferences: ^2.0.10
   intl: ^0.17.0
+  permission_handler: ^11.4.0
+
 
 
 dev_dependencies:

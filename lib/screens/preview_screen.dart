@@ -152,6 +152,13 @@ class _PreviewScreenState extends State<PreviewScreen> {
     final screenSize = MediaQuery.of(context).size;
     final appBarHeight =
         AppBar().preferredSize.height + MediaQuery.of(context).padding.top;
+    // Determine container background based on the current theme.
+    final theme = Theme.of(context);
+    final containerColor =
+        theme.brightness == Brightness.dark
+            ? Colors.blueGrey.shade900
+            : Colors.blue.shade50;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Preview & Edit'),
@@ -219,10 +226,13 @@ class _PreviewScreenState extends State<PreviewScreen> {
               ),
             ),
           ),
-          Padding(
+          Container(
+            width: double.infinity,
+            color: containerColor,
             padding: const EdgeInsets.all(8.0),
             child: Column(
               children: [
+                // Checkboxes row.
                 Wrap(
                   spacing: 20,
                   children: [
@@ -230,6 +240,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Checkbox(
+                          activeColor: Colors.blue.shade700,
                           value: showGPS,
                           onChanged:
                               (value) => setState(() => showGPS = value!),
@@ -241,6 +252,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Checkbox(
+                          activeColor: Colors.blue.shade700,
                           value: showDate,
                           onChanged:
                               (value) => setState(() => showDate = value!),
@@ -252,6 +264,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Checkbox(
+                          activeColor: Colors.blue.shade700,
                           value: showDescription,
                           onChanged:
                               (value) =>
@@ -262,22 +275,29 @@ class _PreviewScreenState extends State<PreviewScreen> {
                     ),
                   ],
                 ),
+                // 24-Hour Switch row.
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Text('24-Hour Time'),
                     Switch(
+                      activeColor: Colors.blue.shade700,
                       value: _is24HourFormat,
                       onChanged:
                           (value) => setState(() => _is24HourFormat = value),
                     ),
                   ],
                 ),
+                // Description text field.
                 TextField(
                   decoration: const InputDecoration(labelText: 'Description'),
                   controller: _descriptionController,
                 ),
+                // Save settings button.
                 ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade700,
+                  ),
                   onPressed: () {
                     widget.onSettingsChanged(
                       gpsOffset,

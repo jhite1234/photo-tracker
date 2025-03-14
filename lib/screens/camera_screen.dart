@@ -23,12 +23,12 @@ class _CameraScreenState extends State<CameraScreen> {
   double _minZoom = 1.0;
   double _maxZoom = 1.0;
   double _currentZoom = 1.0;
-  double _baseZoom = 1.0; // used during pinch
+  double _baseZoom = 1.0; // Used during pinch-to-zoom
 
   Position? _currentPosition;
   late DateTime _captureTime;
 
-  // Overlay settings
+  // Overlay settings.
   bool _showGPS = true;
   bool _showDate = true;
   bool _showDescription = true;
@@ -74,7 +74,6 @@ class _CameraScreenState extends State<CameraScreen> {
     if (_locationPermissionGranted) {
       _fetchCurrentLocation();
     } else {
-      // Optionally, show your custom dialog here.
       print("Location permission not granted.");
     }
   }
@@ -207,7 +206,6 @@ class _CameraScreenState extends State<CameraScreen> {
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done) {
-            // Wrap the CameraPreview with a GestureDetector for pinch-to-zoom.
             return GestureDetector(
               onScaleStart: (details) {
                 _baseZoom = _currentZoom;
@@ -225,7 +223,6 @@ class _CameraScreenState extends State<CameraScreen> {
               child: Stack(
                 children: [
                   CameraPreview(_controller),
-                  // Optionally, retain the slider if you want an extra control.
                   Positioned(
                     bottom: 80,
                     left: 20,
@@ -234,6 +231,8 @@ class _CameraScreenState extends State<CameraScreen> {
                       min: _minZoom,
                       max: _maxZoom,
                       value: _currentZoom.clamp(_minZoom, _maxZoom),
+                      activeColor: Colors.blue.shade700,
+                      inactiveColor: Colors.blue.shade200,
                       onChanged: (value) async {
                         await _controller.setZoomLevel(value);
                         setState(() {
@@ -253,6 +252,8 @@ class _CameraScreenState extends State<CameraScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: _captureAndProcessImage,
         tooltip: 'Capture',
+        backgroundColor: Colors.blue.shade700,
+        foregroundColor: Colors.white,
         child: const Icon(Icons.camera),
       ),
     );

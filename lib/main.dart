@@ -17,7 +17,25 @@ class PlanetPhotoTracker extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Planet Photo Tracker',
-      theme: ThemeData(primarySwatch: Colors.blue),
+      // Define both light and dark themes:
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        iconTheme: IconThemeData(color: Colors.blue.shade700),
+        appBarTheme: AppBarTheme(
+          iconTheme: IconThemeData(color: Colors.blue.shade700),
+        ),
+      ),
+      darkTheme: ThemeData.dark().copyWith(
+        // Customize dark theme if needed:
+        primaryColor: Colors.blue,
+        iconTheme: const IconThemeData(color: Colors.white),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.black,
+          iconTheme: IconThemeData(color: Colors.white),
+        ),
+      ),
+      // Use system theme mode so that the app follows device settings:
+      themeMode: ThemeMode.system,
       home: HomeScreen(cameras: cameras),
     );
   }
@@ -53,6 +71,8 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
+        selectedItemColor: Colors.blue.shade700,
+        unselectedItemColor: Colors.blue.shade200,
         onTap: _onItemTapped,
         items: const [
           BottomNavigationBarItem(

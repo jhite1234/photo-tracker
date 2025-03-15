@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math'; // For the min() function.
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -40,11 +41,14 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _locationPermissionGranted = false;
   StreamSubscription<Position>? _positionStreamSubscription;
 
+  // For enhanced positioning: list to collect samples.
+  List<Position> _positionSamples = [];
+
   @override
   void initState() {
     super.initState();
     _initializeCamera();
-    _checkPermissions();
+    _checkPermissionsAndLocationServices();
     _loadSettings();
   }
 
@@ -69,27 +73,92 @@ class _CameraScreenState extends State<CameraScreen> {
     _initializeCamera();
   }
 
-  Future<void> _checkPermissions() async {
+  // Check if location services are enabled, then request permissions.
+  Future<void> _checkPermissionsAndLocationServices() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      // Prompt the user to enable location services.
+      await Geolocator.openLocationSettings();
+      // Optionally, re-check service status or inform the user.
+      return;
+    }
+
     _locationPermissionGranted = await requestLocationPermission();
     if (_locationPermissionGranted) {
-      _fetchCurrentLocation();
+      _startEnhancedPositioning();
     } else {
       print("Location permission not granted.");
     }
   }
 
-  Future<void> _fetchCurrentLocation() async {
-    try {
-      Position currentPosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-      setState(() {
-        _currentPosition = currentPosition;
-      });
-      print("Current position: $_currentPosition");
-    } catch (e) {
-      print("Error fetching position: $e");
+  // Subscribe to position updates and collect samples.
+  void _startEnhancedPositioning() {
+    _positionStreamSubscription = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 1, // update when moving at least 1 meter.
+      ),
+    ).listen((Position position) {
+      _positionSamples.add(position);
+      // When we have enough samples, compute an average.
+      if (_positionSamples.length >= 5) {
+        Position averagedPosition = _getWeightedAveragePosition(
+          _positionSamples,
+        );
+        setState(() {
+          _currentPosition = averagedPosition;
+        });
+        _positionSamples.clear();
+      }
+      print("Collected position sample: $position");
+    });
+  }
+
+  // Computes a weighted average based on positional accuracy.
+  Position _getWeightedAveragePosition(List<Position> positions) {
+    double sumLat = 0;
+    double sumLng = 0;
+    double sumWeights = 0;
+    for (var pos in positions) {
+      double weight = 1 / _positionalAccuracyOrDefault(pos);
+      sumLat += pos.latitude * weight;
+      sumLng += pos.longitude * weight;
+      sumWeights += weight;
     }
+    double avgLat = sumLat / sumWeights;
+    double avgLng = sumLng / sumWeights;
+    // Use the smallest reported accuracy among the samples.
+    double bestAccuracy = positions.map((p) => p.accuracy).reduce(min);
+    // Use the most recent timestamp.
+    DateTime? latestTimestamp;
+    for (var pos in positions) {
+      if (latestTimestamp == null ||
+          (pos.timestamp?.isAfter(latestTimestamp) ?? false)) {
+        latestTimestamp = pos.timestamp;
+      }
+    }
+    // Fallback to current time if no timestamp was available.
+    latestTimestamp = latestTimestamp ?? DateTime.now();
+    // Create a new Position with the averaged values, including required headingAccuracy.
+    return Position(
+      latitude: avgLat,
+      longitude: avgLng,
+      timestamp: latestTimestamp,
+      accuracy: bestAccuracy,
+      altitude: positions.last.altitude,
+      altitudeAccuracy: positions.last.altitudeAccuracy,
+      heading: positions.last.heading,
+      headingAccuracy: positions.last.headingAccuracy,
+      speed: positions.last.speed,
+      speedAccuracy: positions.last.speedAccuracy,
+      floor: positions.last.floor,
+      isMocked: positions.last.isMocked,
+    );
+  }
+
+  // Helper: returns the accuracy, or a default value if invalid.
+  double _positionalAccuracyOrDefault(Position pos) {
+    return pos.accuracy > 0 ? pos.accuracy : 1.0;
   }
 
   Future<void> _loadSettings() async {
@@ -136,6 +205,7 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _captureAndProcessImage() async {
     try {
       await _initializeControllerFuture;
+      // If _currentPosition is null, try to fetch a fresh position.
       if (_currentPosition == null && _locationPermissionGranted) {
         _currentPosition = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
@@ -223,6 +293,7 @@ class _CameraScreenState extends State<CameraScreen> {
               child: Stack(
                 children: [
                   CameraPreview(_controller),
+                  // Zoom slider.
                   Positioned(
                     bottom: 80,
                     left: 20,
@@ -241,6 +312,26 @@ class _CameraScreenState extends State<CameraScreen> {
                       },
                     ),
                   ),
+                  // Display current position accuracy.
+                  if (_currentPosition != null)
+                    Positioned(
+                      bottom: 40,
+                      left: 20,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'Accuracy: ${_currentPosition!.accuracy.toStringAsFixed(0)} m',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             );

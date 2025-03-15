@@ -1,16 +1,14 @@
 import 'dart:async';
-import 'dart:math'; // For the min() function.
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:permission_handler/permission_handler.dart';
 import '../screens/preview_screen.dart';
-import '../utils/permission_util.dart';
 
 class CameraScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
-  const CameraScreen({required this.cameras, Key? key}) : super(key: key);
+  final Map<String, dynamic>? nativeLocation;
+  const CameraScreen({required this.cameras, this.nativeLocation, Key? key})
+    : super(key: key);
 
   @override
   _CameraScreenState createState() => _CameraScreenState();
@@ -24,10 +22,7 @@ class _CameraScreenState extends State<CameraScreen> {
   double _minZoom = 1.0;
   double _maxZoom = 1.0;
   double _currentZoom = 1.0;
-  double _baseZoom = 1.0; // Used during pinch-to-zoom
-
-  Position? _currentPosition;
-  late DateTime _captureTime;
+  double _baseZoom = 1.0;
 
   // Overlay settings.
   bool _showGPS = true;
@@ -38,17 +33,10 @@ class _CameraScreenState extends State<CameraScreen> {
   Offset descPosition = const Offset(20, 100);
   String descriptionText = 'Your description here';
 
-  bool _locationPermissionGranted = false;
-  StreamSubscription<Position>? _positionStreamSubscription;
-
-  // For enhanced positioning: list to collect samples.
-  List<Position> _positionSamples = [];
-
   @override
   void initState() {
     super.initState();
     _initializeCamera();
-    _checkPermissionsAndLocationServices();
     _loadSettings();
   }
 
@@ -71,94 +59,6 @@ class _CameraScreenState extends State<CameraScreen> {
     _currentCameraIndex = (_currentCameraIndex + 1) % widget.cameras.length;
     await _controller.dispose();
     _initializeCamera();
-  }
-
-  // Check if location services are enabled, then request permissions.
-  Future<void> _checkPermissionsAndLocationServices() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      // Prompt the user to enable location services.
-      await Geolocator.openLocationSettings();
-      // Optionally, re-check service status or inform the user.
-      return;
-    }
-
-    _locationPermissionGranted = await requestLocationPermission();
-    if (_locationPermissionGranted) {
-      _startEnhancedPositioning();
-    } else {
-      print("Location permission not granted.");
-    }
-  }
-
-  // Subscribe to position updates and collect samples.
-  void _startEnhancedPositioning() {
-    _positionStreamSubscription = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 1, // update when moving at least 1 meter.
-      ),
-    ).listen((Position position) {
-      _positionSamples.add(position);
-      // When we have enough samples, compute an average.
-      if (_positionSamples.length >= 5) {
-        Position averagedPosition = _getWeightedAveragePosition(
-          _positionSamples,
-        );
-        setState(() {
-          _currentPosition = averagedPosition;
-        });
-        _positionSamples.clear();
-      }
-      print("Collected position sample: $position");
-    });
-  }
-
-  // Computes a weighted average based on positional accuracy.
-  Position _getWeightedAveragePosition(List<Position> positions) {
-    double sumLat = 0;
-    double sumLng = 0;
-    double sumWeights = 0;
-    for (var pos in positions) {
-      double weight = 1 / _positionalAccuracyOrDefault(pos);
-      sumLat += pos.latitude * weight;
-      sumLng += pos.longitude * weight;
-      sumWeights += weight;
-    }
-    double avgLat = sumLat / sumWeights;
-    double avgLng = sumLng / sumWeights;
-    // Use the smallest reported accuracy among the samples.
-    double bestAccuracy = positions.map((p) => p.accuracy).reduce(min);
-    // Use the most recent timestamp.
-    DateTime? latestTimestamp;
-    for (var pos in positions) {
-      if (latestTimestamp == null ||
-          (pos.timestamp?.isAfter(latestTimestamp) ?? false)) {
-        latestTimestamp = pos.timestamp;
-      }
-    }
-    // Fallback to current time if no timestamp was available.
-    latestTimestamp = latestTimestamp ?? DateTime.now();
-    // Create a new Position with the averaged values, including required headingAccuracy.
-    return Position(
-      latitude: avgLat,
-      longitude: avgLng,
-      timestamp: latestTimestamp,
-      accuracy: bestAccuracy,
-      altitude: positions.last.altitude,
-      altitudeAccuracy: positions.last.altitudeAccuracy,
-      heading: positions.last.heading,
-      headingAccuracy: positions.last.headingAccuracy,
-      speed: positions.last.speed,
-      speedAccuracy: positions.last.speedAccuracy,
-      floor: positions.last.floor,
-      isMocked: positions.last.isMocked,
-    );
-  }
-
-  // Helper: returns the accuracy, or a default value if invalid.
-  double _positionalAccuracyOrDefault(Position pos) {
-    return pos.accuracy > 0 ? pos.accuracy : 1.0;
   }
 
   Future<void> _loadSettings() async {
@@ -197,7 +97,6 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
-    _positionStreamSubscription?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -205,14 +104,8 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _captureAndProcessImage() async {
     try {
       await _initializeControllerFuture;
-      // If _currentPosition is null, try to fetch a fresh position.
-      if (_currentPosition == null && _locationPermissionGranted) {
-        _currentPosition = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-        );
-      }
       final image = await _controller.takePicture();
-      _captureTime = DateTime.now();
+      DateTime captureTime = DateTime.now();
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -220,10 +113,10 @@ class _CameraScreenState extends State<CameraScreen> {
               (context) => PreviewScreen(
                 imagePath: image.path,
                 gpsData:
-                    _currentPosition != null
-                        ? 'Lat: ${_currentPosition!.latitude.toStringAsFixed(6)}, Lng: ${_currentPosition!.longitude.toStringAsFixed(6)}'
+                    widget.nativeLocation != null
+                        ? 'Lat: ${widget.nativeLocation!["latitude"].toStringAsFixed(6)}, Lng: ${widget.nativeLocation!["longitude"].toStringAsFixed(6)}'
                         : 'No GPS',
-                captureTime: _captureTime,
+                captureTime: captureTime,
                 initialGpsOffset: gpsPosition,
                 initialDateOffset: datePosition,
                 initialDescOffset: descPosition,
@@ -312,8 +205,8 @@ class _CameraScreenState extends State<CameraScreen> {
                       },
                     ),
                   ),
-                  // Display current position accuracy.
-                  if (_currentPosition != null)
+                  // Display the native location accuracy.
+                  if (widget.nativeLocation != null)
                     Positioned(
                       bottom: 40,
                       left: 20,
@@ -327,7 +220,7 @@ class _CameraScreenState extends State<CameraScreen> {
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
-                          'Accuracy: ${_currentPosition!.accuracy.toStringAsFixed(0)} m',
+                          'Accuracy: ${widget.nativeLocation!["accuracy"].toStringAsFixed(0)} m',
                           style: const TextStyle(color: Colors.white),
                         ),
                       ),

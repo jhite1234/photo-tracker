@@ -1,6 +1,6 @@
 name: planet_photo_tracker
 description: A Flutter app to capture field data with GPS overlays.
-version: 0.2.1-beta+1
+version: 0.2.2-beta+1
 
 environment:
   sdk: '^3.7.0'

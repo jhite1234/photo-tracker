@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'screens/camera_screen.dart';
 import 'screens/gallery_screen.dart';
-import 'native_location_service.dart';
+import 'utils/native_location_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

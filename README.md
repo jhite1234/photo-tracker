@@ -105,20 +105,25 @@ theme: ThemeData(
 Editing controls in the preview screen dynamically adjust based on the current theme and now use a consistent white styling for text elements and selection highlights.
 
 Changelog
+
 Release v0.2.4
+
 Preview Screen Enhancements:
 Automatic return to the camera screen after saving an image.
 Separated capture area from editing controls so the keyboard does not crop the saved image.
 Only the underlying image is pannable/zoomable (for cropping), while overlays remain fixed.
 Description field now styled with white text, white cursor, and white selection handles with a transparent light blue highlight.
+
 Camera Screen Enhancements:
 Added hardware volume-down capture on Android using a custom platform channel.
 Gallery Screen Enhancements:
 Restored group selection functionality by date (Today, Yesterday, etc.) with checkboxes to select/deselect entire groups.
 Added spacing between images in the grid view.
+
 General Improvements:
 Updated styling for consistency across light and dark themes.
 Various bug fixes and code improvements.
+
 Contributing
 Contributions are welcome! Open an issue or submit a pull request for bug fixes, improvements, or new feature suggestions.
 

@@ -1,32 +1,36 @@
 # Planet Photo Tracker
 
-Planet Photo Tracker is a Flutter application designed specifically for field data collection. It allows users to capture photos integrated with GPS, date, and custom description overlays. Users can adjust overlay positions, and manage captured images easily through an in-app gallery. The app also supports pinch-to-zoom and adapts seamlessly between light and dark themes based on your device settings.
+Planet Photo Tracker is a Flutter application designed for field data collection. It allows users to capture photos with integrated GPS, timestamp, and customizable description overlays. Users can reposition overlays directly on the image, crop images using pinch-to-zoom (while keeping overlays fixed), and manage captured images via an in-app gallery. The app supports dark mode and even lets Android users trigger capture via the hardware volume-down button.
 
 ## Features
 
 ### Camera Capture
 - Capture high-resolution photos using your device’s camera.
+- Trigger image capture using the hardware volume-down button on Android.
 
 ### Overlay Information
 - Automatically tag images with GPS coordinates and timestamps.
-- Add customizable descriptions that can be repositioned directly on the image.
+- Add customizable descriptions that can be repositioned on the image.
 
-### Pinch-to-Zoom
-- Intuitive zoom controls during image capture.
+### Interactive Image Editing
+- Use pinch-to-zoom to crop the underlying image while overlays remain fixed.
+- Editing controls are separated from the capture area so the keyboard does not affect the saved image.
+- Automatic return to the camera screen after saving an image.
+- Description field now features white text, cursor, and selection handles with a transparent light blue highlight for better readability.
 
 ### Gallery View
-- View, share, and delete images directly within the app.
+- Browse, share, and delete images directly within the app.
+- Images are grouped by capture date (e.g., Today, Yesterday, This Week, etc.).
+- Bulk-select or deselect entire date groups using group checkboxes.
+- Improved grid view with spacing between images.
 
 ### Dark Mode Support
-- Automatically adapts to your device’s theme (light/dark).
-
-### Customizable Overlays
-- Drag-and-drop repositioning for GPS, date, and description overlays.
+- The app automatically adapts to your device’s light/dark theme.
 
 ## Getting Started
 
 ### Prerequisites
-- [Flutter SDK](https://flutter.dev/docs/get-started/install) installed on your machine.
+- [Flutter SDK](https://flutter.dev/docs/get-started/install) installed.
 - Android Studio (or Xcode for iOS).
 - An Android device or emulator for testing.
 
@@ -64,38 +68,26 @@ The APK will be located at:
 build/app/outputs/flutter-apk/app-release.apk
 ```
 
-### Android App Bundle
-For Google Play distribution:
-
-```bash
-flutter build appbundle --release
-```
-The generated bundle:
-```
-build/app/outputs/bundle/release/app.aab
-```
-
-> **Note:** Ensure proper signing configurations in `android/app/build.gradle` before building.
-
 ## Code Organization
 
 ```
 lib/
-├── main.dart                  # Entry point, global theme, and navigation.
+├── main.dart                           # Entry point, global theme, and navigation.
 ├── screens/
-│   ├── camera_screen.dart     # Camera features (capture, zoom, overlays).
-│   ├── preview_screen.dart    # Image preview and editing.
-│   └── gallery_screen.dart    # Gallery for managing images.
+│   ├── camera_screen.dart              # Camera features (capture, zoom, overlays).
+│   ├── preview_screen.dart             # Image preview and editing.
+│   └── gallery_screen.dart             # Gallery for managing images.
 └── utils/
-    └── permission_util.dart   # Permissions handling.
+    └── native_location_service.dart    # Native location integration via method channel.
 ```
 
-## Permissions
-- **Camera:** Capturing images (`camera` package).
-- **Location:** GPS data integration (`geolocator` package).
-- **Storage:** Saving images locally. Adjustable for public storage if needed.
+Permissions & Native Integration
+Camera: Captures images using the camera package.
+Location: Retrieves GPS data via native integration (implemented in MainActivity.kt for Android and AppDelegate.swift for iOS).
+Storage: Saves images locally.
+Ensure that the necessary permissions are configured in AndroidManifest.xml and Info.plist.
 
-Ensure permissions are properly configured in `AndroidManifest.xml` and `Info.plist` (iOS).
+
 
 ## Customization & Theme
 App theme adapts automatically based on device settings. Customize further by modifying `ThemeData` in `main.dart`:
@@ -110,11 +102,26 @@ theme: ThemeData(
 ),
 ```
 
-Bottom control areas dynamically adjust background colors based on the current theme in `preview_screen.dart`.
+Editing controls in the preview screen dynamically adjust based on the current theme and now use a consistent white styling for text elements and selection highlights.
 
-## Contributing
-Contributions are encouraged! Open issues or submit pull requests for bug fixes, improvements, or feature additions.
+Changelog
+Release v0.2.4
+Preview Screen Enhancements:
+Automatic return to the camera screen after saving an image.
+Separated capture area from editing controls so the keyboard does not crop the saved image.
+Only the underlying image is pannable/zoomable (for cropping), while overlays remain fixed.
+Description field now styled with white text, white cursor, and white selection handles with a transparent light blue highlight.
+Camera Screen Enhancements:
+Added hardware volume-down capture on Android using a custom platform channel.
+Gallery Screen Enhancements:
+Restored group selection functionality by date (Today, Yesterday, etc.) with checkboxes to select/deselect entire groups.
+Added spacing between images in the grid view.
+General Improvements:
+Updated styling for consistency across light and dark themes.
+Various bug fixes and code improvements.
+Contributing
+Contributions are welcome! Open an issue or submit a pull request for bug fixes, improvements, or new feature suggestions.
 
-## License
-Licensed under the MIT License. See [LICENSE](LICENSE) for details.
+License
+This project is licensed under the MIT License. See the LICENSE file for details.
 

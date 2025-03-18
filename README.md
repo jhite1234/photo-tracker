@@ -104,6 +104,7 @@ theme: ThemeData(
 
 Editing controls in the preview screen dynamically adjust based on the current theme and now use a consistent white styling for text elements and selection highlights.
 
+
 ## Changelog
 Release v0.2.4
 
@@ -124,9 +125,11 @@ Release v0.2.4
 - Updated styling for consistency across light and dark themes.
 - Various bug fixes and code improvements.
 
-### Contributing
+
+## Contributing
 Contributions are welcome! Open an issue or submit a pull request for bug fixes, improvements, or new feature suggestions.
 
-### License
+
+## License
 This project is licensed under the MIT License. See the LICENSE file for details.
 

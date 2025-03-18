@@ -5,9 +5,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
 class PreviewScreen extends StatefulWidget {
@@ -44,8 +42,6 @@ class PreviewScreen extends StatefulWidget {
 }
 
 class _PreviewScreenState extends State<PreviewScreen> {
-  late double maxWidth;
-  late double maxHeight;
   late Offset gpsOffset;
   late Offset dateOffset;
   late Offset descOffset;
@@ -53,10 +49,11 @@ class _PreviewScreenState extends State<PreviewScreen> {
   late bool showDate;
   late bool showDescription;
   late String descriptionText;
-
   bool _is24HourFormat = true;
   late TextEditingController _descriptionController;
-  final GlobalKey _globalKey = GlobalKey();
+
+  // Key to capture the full-screen image+overlays.
+  final GlobalKey _captureKey = GlobalKey();
 
   @override
   void initState() {
@@ -73,18 +70,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
       setState(() {
         descriptionText = _descriptionController.text;
       });
-    });
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final size = MediaQuery.of(context).size;
-    final appBarHeight =
-        AppBar().preferredSize.height + MediaQuery.of(context).padding.top;
-    setState(() {
-      maxWidth = size.width;
-      maxHeight = size.height - appBarHeight;
     });
   }
 
@@ -117,8 +102,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
 
   Future<void> _saveOverlayedImage() async {
     try {
+      // Capture the full capture area regardless of the keyboard.
       RenderRepaintBoundary boundary =
-          _globalKey.currentContext?.findRenderObject()
+          _captureKey.currentContext?.findRenderObject()
               as RenderRepaintBoundary;
       ui.Image image = await boundary.toImage(pixelRatio: 3.0);
       ByteData? byteData = await image.toByteData(
@@ -138,6 +124,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Image saved')));
+      // Automatically return to the Camera Screen.
+      Navigator.pop(context);
     } catch (e) {
       print('Error saving image: $e');
     }
@@ -152,14 +140,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
     final screenSize = MediaQuery.of(context).size;
     final appBarHeight =
         AppBar().preferredSize.height + MediaQuery.of(context).padding.top;
-    // Determine container background based on the current theme.
-    final theme = Theme.of(context);
-    final containerColor =
-        theme.brightness == Brightness.dark
-            ? Colors.blueGrey.shade900
-            : Colors.blue.shade50;
 
     return Scaffold(
+      // Prevent the keyboard from resizing the layout.
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: const Text('Preview & Edit'),
         actions: [
@@ -170,151 +154,204 @@ class _PreviewScreenState extends State<PreviewScreen> {
           ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: RepaintBoundary(
-              key: _globalKey,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.file(File(widget.imagePath), fit: BoxFit.cover),
-                  if (showGPS)
-                    DraggableTextOverlay(
-                      text: 'GPS: ${widget.gpsData}',
-                      initialOffset: gpsOffset,
-                      maxX:
-                          screenSize.width -
-                          (_calculateTextWidth('GPS: ${widget.gpsData}') + 16),
-                      maxY: screenSize.height - 30 - appBarHeight,
-                      onUpdate: (newOffset) {
-                        setState(() {
-                          gpsOffset = newOffset;
-                        });
-                      },
+          // Capture area: full screen, unaffected by the keyboard.
+          RepaintBoundary(
+            key: _captureKey,
+            child: Stack(
+              children: [
+                // Full-screen InteractiveViewer for the image only.
+                Positioned.fill(
+                  child: InteractiveViewer(
+                    minScale: 1.0,
+                    maxScale: 4.0,
+                    child: Image.file(
+                      File(widget.imagePath),
+                      fit: BoxFit.cover,
+                      width: screenSize.width,
+                      height: screenSize.height,
                     ),
-                  if (showDate)
-                    DraggableTextOverlay(
-                      text: 'Date: $formattedDateTime',
-                      initialOffset: dateOffset,
-                      maxX:
-                          screenSize.width -
-                          (_calculateTextWidth('Date: $formattedDateTime') +
-                              16),
-                      maxY: screenSize.height - 30 - appBarHeight,
-                      onUpdate: (newOffset) {
-                        setState(() {
-                          dateOffset = newOffset;
-                        });
-                      },
-                    ),
-                  if (showDescription)
-                    DraggableTextOverlay(
-                      text: descriptionText,
-                      initialOffset: descOffset,
-                      maxX:
-                          screenSize.width -
-                          (_calculateTextWidth(descriptionText) + 16),
-                      maxY: screenSize.height - 30 - appBarHeight,
-                      onUpdate: (newOffset) {
-                        setState(() {
-                          descOffset = newOffset;
-                        });
-                      },
-                    ),
-                ],
-              ),
+                  ),
+                ),
+                // Fixed overlays.
+                if (showGPS)
+                  DraggableTextOverlay(
+                    text: 'GPS: ${widget.gpsData}',
+                    initialOffset: gpsOffset,
+                    maxX:
+                        screenSize.width -
+                        (_calculateTextWidth('GPS: ${widget.gpsData}') + 16),
+                    maxY: screenSize.height - appBarHeight - 30,
+                    onUpdate: (newOffset) {
+                      setState(() {
+                        gpsOffset = newOffset;
+                      });
+                    },
+                  ),
+                if (showDate)
+                  DraggableTextOverlay(
+                    text: 'Date: $formattedDateTime',
+                    initialOffset: dateOffset,
+                    maxX:
+                        screenSize.width -
+                        (_calculateTextWidth('Date: $formattedDateTime') + 16),
+                    maxY: screenSize.height - appBarHeight - 30,
+                    onUpdate: (newOffset) {
+                      setState(() {
+                        dateOffset = newOffset;
+                      });
+                    },
+                  ),
+                if (showDescription)
+                  DraggableTextOverlay(
+                    text: descriptionText,
+                    initialOffset: descOffset,
+                    maxX:
+                        screenSize.width -
+                        (_calculateTextWidth(descriptionText) + 16),
+                    maxY: screenSize.height - appBarHeight - 30,
+                    onUpdate: (newOffset) {
+                      setState(() {
+                        descOffset = newOffset;
+                      });
+                    },
+                  ),
+              ],
             ),
           ),
-          Container(
-            width: double.infinity,
-            color: containerColor,
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
-              children: [
-                // Checkboxes row.
-                Wrap(
-                  spacing: 20,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Checkbox(
-                          activeColor: Colors.blue.shade700,
-                          value: showGPS,
-                          onChanged:
-                              (value) => setState(() => showGPS = value!),
+          // Editing controls are overlaid at the bottom.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Padding(
+              // Shift controls above the keyboard.
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Container(
+                color:
+                    Theme.of(context).brightness == Brightness.dark
+                        ? Colors.blueGrey.shade900
+                        : Colors.blue.shade50,
+                padding: const EdgeInsets.all(8.0),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Checkboxes row.
+                      Wrap(
+                        spacing: 20,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Checkbox(
+                                activeColor: Colors.blue.shade700,
+                                value: showGPS,
+                                onChanged:
+                                    (value) => setState(() => showGPS = value!),
+                              ),
+                              const Text('GPS'),
+                            ],
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Checkbox(
+                                activeColor: Colors.blue.shade700,
+                                value: showDate,
+                                onChanged:
+                                    (value) =>
+                                        setState(() => showDate = value!),
+                              ),
+                              const Text('Date'),
+                            ],
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Checkbox(
+                                activeColor: Colors.blue.shade700,
+                                value: showDescription,
+                                onChanged:
+                                    (value) => setState(
+                                      () => showDescription = value!,
+                                    ),
+                              ),
+                              const Text('Description'),
+                            ],
+                          ),
+                        ],
+                      ),
+                      // 24-Hour Time switch.
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text('24-Hour Time'),
+                          Switch(
+                            activeColor: Colors.blue.shade700,
+                            value: _is24HourFormat,
+                            onChanged:
+                                (value) =>
+                                    setState(() => _is24HourFormat = value),
+                          ),
+                        ],
+                      ),
+                      // Description TextField with updated text selection theme.
+                      Theme(
+                        data: Theme.of(context).copyWith(
+                          textSelectionTheme: TextSelectionThemeData(
+                            cursorColor: Colors.white,
+                            selectionColor: Colors.blue.withOpacity(
+                              0.3,
+                            ), // Transparent light blue highlight.
+                            selectionHandleColor: Colors.white,
+                          ),
                         ),
-                        const Text('GPS'),
-                      ],
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Checkbox(
-                          activeColor: Colors.blue.shade700,
-                          value: showDate,
-                          onChanged:
-                              (value) => setState(() => showDate = value!),
+                        child: TextField(
+                          cursorColor: Colors.white,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(
+                            labelText: 'Description',
+                            labelStyle: TextStyle(color: Colors.white),
+                            enabledBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(color: Colors.white),
+                            ),
+                            focusedBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(color: Colors.white),
+                            ),
+                          ),
+                          controller: _descriptionController,
                         ),
-                        const Text('Date'),
-                      ],
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Checkbox(
-                          activeColor: Colors.blue.shade700,
-                          value: showDescription,
-                          onChanged:
-                              (value) =>
-                                  setState(() => showDescription = value!),
+                      ),
+                      // Save settings button with white text.
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade700,
+                          foregroundColor: Colors.white,
                         ),
-                        const Text('Description'),
-                      ],
-                    ),
-                  ],
-                ),
-                // 24-Hour Switch row.
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text('24-Hour Time'),
-                    Switch(
-                      activeColor: Colors.blue.shade700,
-                      value: _is24HourFormat,
-                      onChanged:
-                          (value) => setState(() => _is24HourFormat = value),
-                    ),
-                  ],
-                ),
-                // Description text field.
-                TextField(
-                  decoration: const InputDecoration(labelText: 'Description'),
-                  controller: _descriptionController,
-                ),
-                // Save settings button.
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade700,
+                        onPressed: () {
+                          widget.onSettingsChanged(
+                            gpsOffset,
+                            dateOffset,
+                            descOffset,
+                            showGPS,
+                            showDate,
+                            showDescription,
+                            descriptionText,
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Settings saved')),
+                          );
+                        },
+                        child: const Text('Save Settings'),
+                      ),
+                    ],
                   ),
-                  onPressed: () {
-                    widget.onSettingsChanged(
-                      gpsOffset,
-                      dateOffset,
-                      descOffset,
-                      showGPS,
-                      showDate,
-                      showDescription,
-                      descriptionText,
-                    );
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Settings saved')),
-                    );
-                  },
-                  child: const Text('Save Settings'),
                 ),
-              ],
+              ),
             ),
           ),
         ],

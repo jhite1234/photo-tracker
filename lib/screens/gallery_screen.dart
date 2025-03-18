@@ -61,8 +61,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   // Helper to get the start of the week using Sunday as the start.
   DateTime _getWeekStart(DateTime date) {
-    // In Dart, weekday is 1 for Monday and 7 for Sunday.
-    // For Sunday as start, subtract date.weekday % 7 days.
     int daysToSubtract = date.weekday % 7;
     return DateTime(
       date.year,
@@ -80,7 +78,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   bool _isYesterday(DateTime date) {
     final now = DateTime.now();
-    final yesterday = now.subtract(Duration(days: 1));
+    final yesterday = now.subtract(const Duration(days: 1));
     return date.year == yesterday.year &&
         date.month == yesterday.month &&
         date.day == yesterday.day;
@@ -88,13 +86,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   bool _isThisWeek(DateTime date, DateTime now) {
     DateTime weekStart = _getWeekStart(now);
-    DateTime weekEnd = weekStart.add(Duration(days: 7));
+    DateTime weekEnd = weekStart.add(const Duration(days: 7));
     return !date.isBefore(weekStart) && date.isBefore(weekEnd);
   }
 
   bool _isLastWeek(DateTime date, DateTime now) {
     DateTime weekStart = _getWeekStart(now);
-    DateTime lastWeekStart = weekStart.subtract(Duration(days: 7));
+    DateTime lastWeekStart = weekStart.subtract(const Duration(days: 7));
     return !date.isBefore(lastWeekStart) && date.isBefore(weekStart);
   }
 
@@ -112,10 +110,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
     } else if (date.year == now.year && date.month == now.month) {
       return "This Month";
     } else if (date.year == now.year) {
-      // For previous months in the current year, show the month name.
       return DateFormat.MMMM().format(date);
     } else {
-      // For images from previous years, use the year.
       return date.year.toString();
     }
   }
@@ -130,7 +126,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
       groups.putIfAbsent(section, () => []);
       groups[section]!.add(image);
     }
-    // Sort images in each section in descending order.
     groups.forEach((key, list) {
       list.sort((a, b) {
         DateTime dateA = _getDateFromFile(a)!;
@@ -141,25 +136,25 @@ class _GalleryScreenState extends State<GalleryScreen> {
     return groups;
   }
 
-  // Determines a sort order for section keys so that fixed groups come first,
-  // then previous month groups (in descending order), and finally older years.
-  int _orderForSection(String section, List<FileSystemEntity> images) {
-    final now = DateTime.now();
-    if (section == "Today") return 0;
-    if (section == "Yesterday") return 1;
-    if (section == "This Week") return 2;
-    if (section == "Last Week") return 3;
-    if (section == "This Month") return 4;
-    // For month groups in the current year:
-    DateTime? dt = _getDateFromFile(images.first);
-    if (dt != null && dt.year == now.year) {
-      return 5 + (12 - dt.month); // Lower number means more recent month.
-    }
-    // For year groups, assign a high order number so they appear after current-year groups.
-    int year = int.tryParse(section) ?? now.year;
-    return 10000 - year;
+  // Toggle selection of all images in a given section.
+  void _toggleSectionSelection(String section, List<FileSystemEntity> images) {
+    setState(() {
+      bool allSelected = images.every(
+        (image) => _selectedImages.contains(image.path),
+      );
+      if (allSelected) {
+        for (var image in images) {
+          _selectedImages.remove(image.path);
+        }
+      } else {
+        for (var image in images) {
+          _selectedImages.add(image.path);
+        }
+      }
+    });
   }
 
+  // Toggle individual image selection.
   void _toggleSelection(String path) {
     setState(() {
       if (_selectedImages.contains(path)) {
@@ -211,10 +206,25 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
   }
 
+  // Determines a sort order for section keys.
+  int _orderForSection(String section, List<FileSystemEntity> images) {
+    final now = DateTime.now();
+    if (section == "Today") return 0;
+    if (section == "Yesterday") return 1;
+    if (section == "This Week") return 2;
+    if (section == "Last Week") return 3;
+    if (section == "This Month") return 4;
+    DateTime? dt = _getDateFromFile(images.first);
+    if (dt != null && dt.year == now.year) {
+      return 5 + (12 - dt.month);
+    }
+    int year = int.tryParse(section) ?? now.year;
+    return 10000 - year;
+  }
+
   @override
   Widget build(BuildContext context) {
     Map<String, List<FileSystemEntity>> groups = _groupImages();
-    // Sort the section keys using our custom order.
     List<String> sectionKeys = groups.keys.toList();
     sectionKeys.sort(
       (a, b) =>
@@ -267,24 +277,45 @@ class _GalleryScreenState extends State<GalleryScreen> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Section header.
+                      // Section header with group selection checkbox.
                       Padding(
                         padding: const EdgeInsets.all(8.0),
-                        child: Text(
-                          section,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              section,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (_selectionMode)
+                              Checkbox(
+                                activeColor: Colors.blue.shade700,
+                                value: sectionImages.every(
+                                  (image) =>
+                                      _selectedImages.contains(image.path),
+                                ),
+                                onChanged: (value) {
+                                  _toggleSectionSelection(
+                                    section,
+                                    sectionImages,
+                                  );
+                                },
+                              ),
+                          ],
                         ),
                       ),
-                      // Display images in a grid.
+                      // Grid of images for this section with spacing.
                       GridView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: 3,
+                              crossAxisSpacing: 4.0,
+                              mainAxisSpacing: 4.0,
                             ),
                         itemCount: sectionImages.length,
                         itemBuilder: (context, imgIndex) {

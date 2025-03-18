@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // For EventChannel
 import 'package:shared_preferences/shared_preferences.dart';
 import '../screens/preview_screen.dart';
 
@@ -15,6 +16,7 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen> {
+  static const String VOLUME_CHANNEL = "com.example.volume_button";
   late CameraController _controller;
   late Future<void> _initializeControllerFuture;
   int _currentCameraIndex = 0;
@@ -33,11 +35,21 @@ class _CameraScreenState extends State<CameraScreen> {
   Offset descPosition = const Offset(20, 100);
   String descriptionText = 'Your description here';
 
+  late final StreamSubscription _volumeSubscription;
+
   @override
   void initState() {
     super.initState();
     _initializeCamera();
     _loadSettings();
+
+    // Subscribe to volume button events from the custom platform channel.
+    const EventChannel eventChannel = EventChannel(VOLUME_CHANNEL);
+    _volumeSubscription = eventChannel.receiveBroadcastStream().listen((event) {
+      if (event == "volumeDownPressed") {
+        _captureAndProcessImage();
+      }
+    });
   }
 
   Future<void> _initializeCamera() async {
@@ -97,6 +109,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
+    _volumeSubscription.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -205,7 +218,7 @@ class _CameraScreenState extends State<CameraScreen> {
                       },
                     ),
                   ),
-                  // Display the native location accuracy.
+                  // Display native location accuracy.
                   if (widget.nativeLocation != null)
                     Positioned(
                       bottom: 40,

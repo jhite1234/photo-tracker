@@ -81,10 +81,11 @@ lib/
     └── native_location_service.dart    # Native location integration via method channel.
 ```
 
-Permissions & Native Integration
-Camera: Captures images using the camera package.
-Location: Retrieves GPS data via native integration (implemented in MainActivity.kt for Android and AppDelegate.swift for iOS).
-Storage: Saves images locally.
+## Permissions & Native Integration
+- Camera: Captures images using the camera package.
+- Location: Retrieves GPS data via native integration (implemented in MainActivity.kt for Android and AppDelegate.swift for iOS).
+- Storage: Saves images locally.
+
 Ensure that the necessary permissions are configured in AndroidManifest.xml and Info.plist.
 
 
